@@ -8,12 +8,14 @@
 #include <QAbstractTableModel>
 #include <QStringList>
 
-enum OutputType : int;
+enum class OutputType;
 
 class AddressTablePriv;
 class WalletModel;
 
-class CWallet;
+namespace interfaces {
+class Wallet;
+}
 
 /**
    Qt model of the address book in the core. This allows views to access and modify the address book.
@@ -23,7 +25,7 @@ class AddressTableModel : public QAbstractTableModel
     Q_OBJECT
 
 public:
-    explicit AddressTableModel(CWallet *wallet, WalletModel *parent = 0);
+    explicit AddressTableModel(WalletModel *parent = 0);
     ~AddressTableModel();
 
     enum ColumnIndex {
@@ -76,9 +78,10 @@ public:
 
     EditStatus getEditStatus() const { return editStatus; }
 
+    OutputType GetDefaultAddressType() const;
+
 private:
     WalletModel *walletModel;
-    CWallet *wallet;
     AddressTablePriv *priv;
     QStringList columns;
     EditStatus editStatus;

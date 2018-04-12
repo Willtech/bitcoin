@@ -24,8 +24,8 @@ from .util import (
     check_json_precision,
     connect_nodes_bi,
     disconnect_nodes,
+    get_datadir_path,
     initialize_datadir,
-    log_filename,
     p2p_port,
     set_node_times,
     sync_blocks,
@@ -41,7 +41,28 @@ TEST_EXIT_PASSED = 0
 TEST_EXIT_FAILED = 1
 TEST_EXIT_SKIPPED = 77
 
-class BitcoinTestFramework():
+
+class BitcoinTestMetaClass(type):
+    """Metaclass for BitcoinTestFramework.
+
+    Ensures that any attempt to register a subclass of `BitcoinTestFramework`
+    adheres to a standard whereby the subclass overrides `set_test_params` and
+    `run_test` but DOES NOT override either `__init__` or `main`. If any of
+    those standards are violated, a ``TypeError`` is raised."""
+
+    def __new__(cls, clsname, bases, dct):
+        if not clsname == 'BitcoinTestFramework':
+            if not ('run_test' in dct and 'set_test_params' in dct):
+                raise TypeError("BitcoinTestFramework subclasses must override "
+                                "'run_test' and 'set_test_params'")
+            if '__init__' in dct or 'main' in dct:
+                raise TypeError("BitcoinTestFramework subclasses may not override "
+                                "'__init__' or 'main'")
+
+        return super().__new__(cls, clsname, bases, dct)
+
+
+class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
     """Base class for a bitcoin test script.
 
     Individual bitcoin test scripts should subclass this class and override the set_test_params() and run_test() methods.
@@ -63,6 +84,7 @@ class BitcoinTestFramework():
         self.nodes = []
         self.mocktime = 0
         self.supports_cli = False
+        self.bind_to_localhost_only = True
         self.set_test_params()
 
         assert hasattr(self, "num_nodes"), "Test must set self.num_nodes in set_test_params()"
@@ -147,6 +169,8 @@ class BitcoinTestFramework():
             if self.nodes:
                 self.stop_nodes()
         else:
+            for node in self.nodes:
+                node.cleanup_on_exit = False
             self.log.info("Note: bitcoinds were not stopped and may still be running")
 
         if not self.options.nocleanup and not self.options.noshutdown and success != TestStatus.FAILED:
@@ -215,15 +239,19 @@ class BitcoinTestFramework():
 
     def add_nodes(self, num_nodes, extra_args=None, rpchost=None, timewait=None, binary=None):
         """Instantiate TestNode objects"""
-
+        if self.bind_to_localhost_only:
+            extra_confs = [["bind=127.0.0.1"]] * num_nodes
+        else:
+            extra_confs = [[]] * num_nodes
         if extra_args is None:
             extra_args = [[]] * num_nodes
         if binary is None:
             binary = [None] * num_nodes
+        assert_equal(len(extra_confs), num_nodes)
         assert_equal(len(extra_args), num_nodes)
         assert_equal(len(binary), num_nodes)
         for i in range(num_nodes):
-            self.nodes.append(TestNode(i, self.options.tmpdir, extra_args[i], rpchost, timewait=timewait, binary=binary[i], stderr=None, mocktime=self.mocktime, coverage_dir=self.options.coveragedir, use_cli=self.options.usecli))
+            self.nodes.append(TestNode(i, get_datadir_path(self.options.tmpdir, i), rpchost=rpchost, timewait=timewait, binary=binary[i], stderr=None, mocktime=self.mocktime, coverage_dir=self.options.coveragedir, extra_conf=extra_confs[i], extra_args=extra_args[i], use_cli=self.options.usecli))
 
     def start_node(self, i, *args, **kwargs):
         """Start a bitcoind"""
@@ -276,27 +304,6 @@ class BitcoinTestFramework():
         self.stop_node(i)
         self.start_node(i, extra_args)
 
-    def assert_start_raises_init_error(self, i, extra_args=None, expected_msg=None, *args, **kwargs):
-        with tempfile.SpooledTemporaryFile(max_size=2**16) as log_stderr:
-            try:
-                self.start_node(i, extra_args, stderr=log_stderr, *args, **kwargs)
-                self.stop_node(i)
-            except Exception as e:
-                assert 'bitcoind exited' in str(e)  # node must have shutdown
-                self.nodes[i].running = False
-                self.nodes[i].process = None
-                if expected_msg is not None:
-                    log_stderr.seek(0)
-                    stderr = log_stderr.read().decode('utf-8')
-                    if expected_msg not in stderr:
-                        raise AssertionError("Expected error \"" + expected_msg + "\" not found in:\n" + stderr)
-            else:
-                if expected_msg is None:
-                    assert_msg = "bitcoind should have exited with an error"
-                else:
-                    assert_msg = "bitcoind should have exited with expected error " + expected_msg
-                raise AssertionError(assert_msg)
-
     def wait_for_node_exit(self, i, timeout):
         self.nodes[i].process.wait(timeout)
 
@@ -330,7 +337,7 @@ class BitcoinTestFramework():
         blockchain.  If the cached version of the blockchain is used without
         mocktime then the mempools will not sync due to IBD.
 
-        For backwared compatibility of the python scripts with previous
+        For backward compatibility of the python scripts with previous
         versions of the cache, this helper function sets mocktime to Jan 1,
         2014 + (201 * 10 * 60)"""
         self.mocktime = 1388534400 + (201 * 10 * 60)
@@ -353,7 +360,7 @@ class BitcoinTestFramework():
         ll = int(self.options.loglevel) if self.options.loglevel.isdigit() else self.options.loglevel.upper()
         ch.setLevel(ll)
         # Format logs the same as bitcoind's debug.log with microprecision (so log files can be concatenated and sorted)
-        formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d000 %(name)s (%(levelname)s): %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d000Z %(name)s (%(levelname)s): %(message)s', datefmt='%Y-%m-%dT%H:%M:%S')
         formatter.converter = time.gmtime
         fh.setFormatter(formatter)
         ch.setFormatter(formatter)
@@ -377,7 +384,7 @@ class BitcoinTestFramework():
         assert self.num_nodes <= MAX_NODES
         create_cache = False
         for i in range(MAX_NODES):
-            if not os.path.isdir(os.path.join(self.options.cachedir, 'node' + str(i))):
+            if not os.path.isdir(get_datadir_path(self.options.cachedir, i)):
                 create_cache = True
                 break
 
@@ -386,8 +393,8 @@ class BitcoinTestFramework():
 
             # find and delete old cache directories if any exist
             for i in range(MAX_NODES):
-                if os.path.isdir(os.path.join(self.options.cachedir, "node" + str(i))):
-                    shutil.rmtree(os.path.join(self.options.cachedir, "node" + str(i)))
+                if os.path.isdir(get_datadir_path(self.options.cachedir, i)):
+                    shutil.rmtree(get_datadir_path(self.options.cachedir, i))
 
             # Create cache directories, run bitcoinds:
             for i in range(MAX_NODES):
@@ -395,7 +402,7 @@ class BitcoinTestFramework():
                 args = [os.getenv("BITCOIND", "bitcoind"), "-datadir=" + datadir]
                 if i > 0:
                     args.append("-connect=127.0.0.1:" + str(p2p_port(0)))
-                self.nodes.append(TestNode(i, self.options.cachedir, extra_args=[], rpchost=None, timewait=None, binary=None, stderr=None, mocktime=self.mocktime, coverage_dir=None))
+                self.nodes.append(TestNode(i, get_datadir_path(self.options.cachedir, i), extra_conf=["bind=127.0.0.1"], extra_args=[],rpchost=None, timewait=None, binary=None, stderr=None, mocktime=self.mocktime, coverage_dir=None))
                 self.nodes[i].args = args
                 self.start_node(i)
 
@@ -425,15 +432,18 @@ class BitcoinTestFramework():
             self.stop_nodes()
             self.nodes = []
             self.disable_mocktime()
+
+            def cache_path(n, *paths):
+                return os.path.join(get_datadir_path(self.options.cachedir, n), "regtest", *paths)
+
             for i in range(MAX_NODES):
-                os.remove(log_filename(self.options.cachedir, i, "debug.log"))
-                os.remove(log_filename(self.options.cachedir, i, "wallets/db.log"))
-                os.remove(log_filename(self.options.cachedir, i, "peers.dat"))
-                os.remove(log_filename(self.options.cachedir, i, "fee_estimates.dat"))
+                for entry in os.listdir(cache_path(i)):
+                    if entry not in ['wallets', 'chainstate', 'blocks']:
+                        os.remove(cache_path(i, entry))
 
         for i in range(self.num_nodes):
-            from_dir = os.path.join(self.options.cachedir, "node" + str(i))
-            to_dir = os.path.join(self.options.tmpdir, "node" + str(i))
+            from_dir = get_datadir_path(self.options.cachedir, i)
+            to_dir = get_datadir_path(self.options.tmpdir, i)
             shutil.copytree(from_dir, to_dir)
             initialize_datadir(self.options.tmpdir, i)  # Overwrite port/rpcport in bitcoin.conf
 
@@ -445,34 +455,6 @@ class BitcoinTestFramework():
         for i in range(self.num_nodes):
             initialize_datadir(self.options.tmpdir, i)
 
-class ComparisonTestFramework(BitcoinTestFramework):
-    """Test framework for doing p2p comparison testing
-
-    Sets up some bitcoind binaries:
-    - 1 binary: test binary
-    - 2 binaries: 1 test binary, 1 ref binary
-    - n>2 binaries: 1 test binary, n-1 ref binaries"""
-
-    def set_test_params(self):
-        self.num_nodes = 2
-        self.setup_clean_chain = True
-
-    def add_options(self, parser):
-        parser.add_option("--testbinary", dest="testbinary",
-                          default=os.getenv("BITCOIND", "bitcoind"),
-                          help="bitcoind binary to test")
-        parser.add_option("--refbinary", dest="refbinary",
-                          default=os.getenv("BITCOIND", "bitcoind"),
-                          help="bitcoind binary to use for reference nodes (if any)")
-
-    def setup_network(self):
-        extra_args = [['-whitelist=127.0.0.1']] * self.num_nodes
-        if hasattr(self, "extra_args"):
-            extra_args = self.extra_args
-        self.add_nodes(self.num_nodes, extra_args,
-                       binary=[self.options.testbinary] +
-                       [self.options.refbinary] * (self.num_nodes - 1))
-        self.start_nodes()
 
 class SkipTest(Exception):
     """This exception is raised to skip a test"""

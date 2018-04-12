@@ -147,7 +147,7 @@ size_t CCoinsViewDB::EstimateSize() const
     return db.EstimateSize(DB_COIN, (char)(DB_COIN+1));
 }
 
-CBlockTreeDB::CBlockTreeDB(size_t nCacheSize, bool fMemory, bool fWipe) : CDBWrapper(GetDataDir() / "blocks" / "index", nCacheSize, fMemory, fWipe) {
+CBlockTreeDB::CBlockTreeDB(size_t nCacheSize, bool fMemory, bool fWipe) : CDBWrapper(gArgs.IsArgSet("-blocksdir") ? GetDataDir() / "blocks" / "index" : GetBlocksDir() / "index", nCacheSize, fMemory, fWipe) {
 }
 
 bool CBlockTreeDB::ReadBlockFileInfo(int nFile, CBlockFileInfo &info) {
@@ -324,7 +324,7 @@ public:
     void Unserialize(Stream &s) {
         unsigned int nCode = 0;
         // version
-        int nVersionDummy;
+        unsigned int nVersionDummy;
         ::Unserialize(s, VARINT(nVersionDummy));
         // header code
         ::Unserialize(s, VARINT(nCode));
@@ -348,10 +348,10 @@ public:
         vout.assign(vAvail.size(), CTxOut());
         for (unsigned int i = 0; i < vAvail.size(); i++) {
             if (vAvail[i])
-                ::Unserialize(s, REF(CTxOutCompressor(vout[i])));
+                ::Unserialize(s, CTxOutCompressor(vout[i]));
         }
         // coinbase height
-        ::Unserialize(s, VARINT(nHeight));
+        ::Unserialize(s, VARINT(nHeight, VarIntMode::NONNEGATIVE_SIGNED));
     }
 };
 
@@ -370,7 +370,7 @@ bool CCoinsViewDB::Upgrade() {
 
     int64_t count = 0;
     LogPrintf("Upgrading utxo-set database...\n");
-    LogPrintf("[0%%]...");
+    LogPrintf("[0%%]..."); /* Continued */
     uiInterface.ShowProgress(_("Upgrading UTXO database"), 0, true);
     size_t batch_size = 1 << 24;
     CDBBatch batch(db);
@@ -389,7 +389,7 @@ bool CCoinsViewDB::Upgrade() {
                 uiInterface.ShowProgress(_("Upgrading UTXO database"), percentageDone, true);
                 if (reportDone < percentageDone/10) {
                     // report max. every 10% step
-                    LogPrintf("[%d%%]...", percentageDone);
+                    LogPrintf("[%d%%]...", percentageDone); /* Continued */
                     reportDone = percentageDone/10;
                 }
             }

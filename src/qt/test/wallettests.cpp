@@ -1,5 +1,6 @@
 #include <qt/test/wallettests.h>
 
+#include <interfaces/node.h>
 #include <qt/bitcoinamountfield.h>
 #include <qt/callback.h>
 #include <qt/optionsmodel.h>
@@ -10,6 +11,7 @@
 #include <qt/transactiontablemodel.h>
 #include <qt/transactionview.h>
 #include <qt/walletmodel.h>
+#include <key_io.h>
 #include <test/test_bitcoin.h>
 #include <validation.h>
 #include <wallet/wallet.h>
@@ -17,6 +19,8 @@
 #include <qt/receivecoinsdialog.h>
 #include <qt/recentrequeststablemodel.h>
 #include <qt/receiverequestdialog.h>
+
+#include <memory>
 
 #include <QAbstractButton>
 #include <QAction>
@@ -149,24 +153,17 @@ void BumpFee(TransactionView& view, const uint256& txid, bool expectDisabled, st
 //     src/qt/test/test_bitcoin-qt -platform cocoa    # macOS
 void TestGUI()
 {
-    g_address_type = OUTPUT_TYPE_P2SH_SEGWIT;
-    g_change_type = OUTPUT_TYPE_P2SH_SEGWIT;
-
     // Set up wallet and chain with 105 blocks (5 mature blocks for spending).
     TestChain100Setup test;
     for (int i = 0; i < 5; ++i) {
         test.CreateAndProcessBlock({}, GetScriptForRawPubKey(test.coinbaseKey.GetPubKey()));
     }
-    bitdb.MakeMock();
-    g_wallet_allow_fallback_fee = true;
-
-    std::unique_ptr<CWalletDBWrapper> dbw(new CWalletDBWrapper(&bitdb, "wallet_test.dat"));
-    CWallet wallet(std::move(dbw));
+    CWallet wallet("mock", WalletDatabase::CreateMock());
     bool firstRun;
     wallet.LoadWallet(firstRun);
     {
         LOCK(wallet.cs_wallet);
-        wallet.SetAddressBook(GetDestinationForKey(test.coinbaseKey.GetPubKey(), g_address_type), "", "receive");
+        wallet.SetAddressBook(GetDestinationForKey(test.coinbaseKey.GetPubKey(), wallet.m_default_address_type), "", "receive");
         wallet.AddKeyPubKey(test.coinbaseKey, test.coinbaseKey.GetPubKey());
     }
     {
@@ -181,8 +178,11 @@ void TestGUI()
     std::unique_ptr<const PlatformStyle> platformStyle(PlatformStyle::instantiate("other"));
     SendCoinsDialog sendCoinsDialog(platformStyle.get());
     TransactionView transactionView(platformStyle.get());
-    OptionsModel optionsModel;
-    WalletModel walletModel(platformStyle.get(), &wallet, &optionsModel);
+    auto node = interfaces::MakeNode();
+    OptionsModel optionsModel(*node);
+    vpwallets.insert(vpwallets.begin(), &wallet);
+    WalletModel walletModel(std::move(node->getWallets()[0]), *node, platformStyle.get(), &optionsModel);
+    vpwallets.erase(vpwallets.begin());
     sendCoinsDialog.setModel(&walletModel);
     transactionView.setModel(&walletModel);
 
@@ -207,7 +207,7 @@ void TestGUI()
     QLabel* balanceLabel = overviewPage.findChild<QLabel*>("labelBalance");
     QString balanceText = balanceLabel->text();
     int unit = walletModel.getOptionsModel()->getDisplayUnit();
-    CAmount balance = walletModel.getBalance();
+    CAmount balance = walletModel.wallet().getBalance();
     QString balanceComparison = BitcoinUnits::formatWithUnit(unit, balance, false, BitcoinUnits::separatorAlways);
     QCOMPARE(balanceText, balanceComparison);
 
@@ -262,9 +262,6 @@ void TestGUI()
     QPushButton* removeRequestButton = receiveCoinsDialog.findChild<QPushButton*>("removeRequestButton");
     removeRequestButton->click();
     QCOMPARE(requestTableModel->rowCount({}), currentRowCount-1);
-
-    bitdb.Flush(true);
-    bitdb.Reset();
 }
 
 }
