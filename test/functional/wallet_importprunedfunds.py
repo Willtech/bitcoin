@@ -10,13 +10,14 @@ class ImportPrunedFundsTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
+        self.extra_args = [['-deprecatedrpc=accounts']] * 2
 
     def run_test(self):
         self.log.info("Mining blocks...")
         self.nodes[0].generate(101)
 
         self.sync_all()
-        
+
         # address
         address1 = self.nodes[0].getnewaddress()
         # pubkey

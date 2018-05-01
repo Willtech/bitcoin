@@ -103,6 +103,7 @@ BITCOIN_CORE_H = \
   fs.h \
   httprpc.h \
   httpserver.h \
+  index/txindex.h \
   indirectmap.h \
   init.h \
   interfaces/handler.h \
@@ -113,6 +114,7 @@ BITCOIN_CORE_H = \
   keystore.h \
   dbwrapper.h \
   limitedmap.h \
+  logging.h \
   memusage.h \
   merkleblock.h \
   miner.h \
@@ -135,7 +137,6 @@ BITCOIN_CORE_H = \
   rpc/client.h \
   rpc/mining.h \
   rpc/protocol.h \
-  rpc/safemode.h \
   rpc/server.h \
   rpc/rawtransaction.h \
   rpc/register.h \
@@ -203,6 +204,7 @@ libbitcoin_server_a_SOURCES = \
   consensus/tx_verify.cpp \
   httprpc.cpp \
   httpserver.cpp \
+  index/txindex.cpp \
   init.cpp \
   dbwrapper.cpp \
   merkleblock.cpp \
@@ -220,7 +222,6 @@ libbitcoin_server_a_SOURCES = \
   rpc/misc.cpp \
   rpc/net.cpp \
   rpc/rawtransaction.cpp \
-  rpc/safemode.cpp \
   rpc/server.cpp \
   script/sigcache.cpp \
   timedata.cpp \
@@ -364,6 +365,7 @@ libbitcoin_util_a_SOURCES = \
   fs.cpp \
   interfaces/handler.cpp \
   interfaces/node.cpp \
+  logging.cpp \
   random.cpp \
   rpc/protocol.cpp \
   rpc/util.cpp \
