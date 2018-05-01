@@ -1,14 +1,15 @@
-TOR SUPPORT IN BITCOIN
-======================
+# TOR SUPPORT IN BITCOIN
 
 It is possible to run Bitcoin as a Tor hidden service, and connect to such services.
 
-The following directions assume you have a Tor proxy running on port 9050. Many distributions default to having a SOCKS proxy listening on port 9050, but others may not. In particular, the Tor Browser Bundle defaults to listening on port 9150. See [Tor Project FAQ:TBBSocksPort](https://www.torproject.org/docs/faq.html.en#TBBSocksPort) for how to properly
-configure Tor.
+The following directions assume you have a Tor proxy running on port 9050. Many
+distributions default to having a SOCKS proxy listening on port 9050, but others may
+not. In particular, the Tor Browser Bundle defaults to listening on port 9150. See
+[Tor Project FAQ:TBBSocksPort](https://www.torproject.org/docs/faq.html.en#TBBSocksPort)
+for how to properly configure Tor.
 
 
-1. Run bitcoin behind a Tor proxy
----------------------------------
+## 1. Run bitcoin behind a Tor proxy
 
 The first step is running Bitcoin behind a Tor proxy. This will already make all
 outgoing connections be anonymized, but more is possible.
@@ -34,8 +35,7 @@ In a typical situation, this suffices to run behind a Tor proxy:
 	./bitcoind -proxy=127.0.0.1:9050
 
 
-2. Run a bitcoin hidden server
-------------------------------
+## 2. Run a bitcoin hidden server
 
 If you configure your Tor system accordingly, it is possible to make your node also
 reachable from the Tor network. Add these lines to your /etc/tor/torrc (or equivalent
@@ -52,27 +52,27 @@ your bitcoind's P2P listen port (8333 by default).
 	                this option, and this can be a .onion address. Given the above
 	                configuration, you can find your onion address in
 	                /var/lib/tor/bitcoin-service/hostname. Onion addresses are given
-	                preference for your node to advertise itself with, for connections
-	                coming from unroutable addresses (such as 127.0.0.1, where the
-	                Tor proxy typically runs).
+	                preference for your node to advertise itself with, for
+	                connections coming from unroutable addresses (such as 127.0.0.1,
+	                where the Tor proxy typically runs).
 
 	-listen         You'll need to enable listening for incoming connections, as this
 	                is off by default behind a proxy.
 
-	-discover       When -externalip is specified, no attempt is made to discover local
-	                IPv4 or IPv6 addresses. If you want to run a dual stack, reachable
-	                from both Tor and IPv4 (or IPv6), you'll need to either pass your
-	                other addresses using -externalip, or explicitly enable -discover.
-	                Note that both addresses of a dual-stack system may be easily
-	                linkable using traffic analysis.
+	-discover       When -externalip is specified, no attempt is made to discover
+	                local IPv4 or IPv6 addresses. If you want to run a dual stack,
+	                reachable from both Tor and IPv4 (or IPv6), you'll need to either
+	                pass your other addresses using -externalip, or explicitly enable
+	                -discover. Note that both addresses of a dual-stack system may be
+	                easily linkable using traffic analysis.
 
 In a typical situation, where you're only reachable via Tor, this should suffice:
 
 	./bitcoind -proxy=127.0.0.1:9050 -externalip=57qr3yd1nyntf5k.onion -listen
 
 (obviously, replace the Onion address with your own). It should be noted that you still
-listen on all devices and another node could establish a clearnet connection, when knowing
-your address. To mitigate this, additionally bind the address of your Tor proxy:
+listen on all devices and another node could establish a clearnet connection, when
+knowing your address. To mitigate this, additionally bind the address of your Tor proxy:
 
 	./bitcoind ... -bind=127.0.0.1
 
@@ -88,8 +88,7 @@ for normal IPv4/IPv6 communication, use:
 
 	./bitcoind -onion=127.0.0.1:9050 -externalip=57qr3yd1nyntf5k.onion -discover
 
-3. Automatically listen on Tor
---------------------------------
+## 3. Automatically listen on Tor
 
 Starting with Tor version 0.2.7.1 it is possible, through Tor's control socket
 API, to create and destroy 'ephemeral' hidden services programmatically.
@@ -115,8 +114,7 @@ which has the appropriate permissions. An alternative authentication method is t
 of the `-torpassword` flag and a `hash-password` which can be enabled and specified in 
 Tor configuration.
 
-4. Privacy recommendations
----------------------------
+## 4. Privacy recommendations
 
 - Do not add anything but bitcoin ports to the hidden service created in section 2.
   If you run a web service too, create a new hidden service for that.
